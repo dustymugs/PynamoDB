@@ -4,6 +4,7 @@ DynamoDB Models for PynamoDB
 import random
 import time
 import logging
+from threading import local
 import warnings
 import sys
 from inspect import getmembers
@@ -184,6 +185,7 @@ class MetaProtocol(Protocol):
     base_backoff_ms: int
     max_retry_attempts: int
     max_pool_connections: int
+    proxies: Optional[dict]
     extra_headers: Mapping[str, str]
     aws_access_key_id: Optional[str]
     aws_secret_access_key: Optional[str]
@@ -285,6 +287,8 @@ class Model(AttributeContainer, metaclass=MetaModel):
     _index_classes: Optional[Dict[str, Any]] = None
     DoesNotExist: Type[DoesNotExist] = DoesNotExist
     _version_attribute_name: Optional[str] = None
+
+    _local = local()
 
     Meta: MetaProtocol
 
@@ -1078,20 +1082,23 @@ class Model(AttributeContainer, metaclass=MetaModel):
             )
         # For now we just check that the connection exists and (in the case of model inheritance)
         # points to the same table. In the future we should update the connection if any of the attributes differ.
-        if cls._connection is None or cls._connection.table_name != cls.Meta.table_name:
-            cls._connection = TableConnection(cls.Meta.table_name,
-                                              region=cls.Meta.region,
-                                              host=cls.Meta.host,
-                                              connect_timeout_seconds=cls.Meta.connect_timeout_seconds,
-                                              read_timeout_seconds=cls.Meta.read_timeout_seconds,
-                                              max_retry_attempts=cls.Meta.max_retry_attempts,
-                                              base_backoff_ms=cls.Meta.base_backoff_ms,
-                                              max_pool_connections=cls.Meta.max_pool_connections,
-                                              extra_headers=cls.Meta.extra_headers,
-                                              aws_access_key_id=cls.Meta.aws_access_key_id,
-                                              aws_secret_access_key=cls.Meta.aws_secret_access_key,
-                                              aws_session_token=cls.Meta.aws_session_token)
-        return cls._connection
+        conn = getattr(cls._local, 'connection', None)
+        if conn is None or conn.table_name != cls.Meta.table_name:
+            cls._local.connection = conn = TableConnection(
+                cls.Meta.table_name,
+                region=cls.Meta.region,
+                host=cls.Meta.host,
+                connect_timeout_seconds=cls.Meta.connect_timeout_seconds,
+                read_timeout_seconds=cls.Meta.read_timeout_seconds,
+                max_retry_attempts=cls.Meta.max_retry_attempts,
+                base_backoff_ms=cls.Meta.base_backoff_ms,
+                max_pool_connections=cls.Meta.max_pool_connections,
+                proxies=cls.Meta.proxies,
+                extra_headers=cls.Meta.extra_headers,
+                aws_access_key_id=cls.Meta.aws_access_key_id,
+                aws_secret_access_key=cls.Meta.aws_secret_access_key,
+                aws_session_token=cls.Meta.aws_session_token)
+        return conn
 
     @classmethod
     def _serialize_value(cls, attr, value):

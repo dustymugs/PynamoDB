@@ -247,6 +247,7 @@ class Connection(object):
                  max_retry_attempts: Optional[int] = None,
                  base_backoff_ms: Optional[int] = None,
                  max_pool_connections: Optional[int] = None,
+                 proxies: Optional[dict] = None,
                  extra_headers: Optional[Mapping[str, str]] = None):
         self._tables: Dict[str, MetaTable] = {}
         self.host = host
@@ -281,6 +282,11 @@ class Connection(object):
             self._max_pool_connections = max_pool_connections
         else:
             self._max_pool_connections = get_settings_value('max_pool_connections')
+
+        if proxies is not None:
+            self._proxies = proxies
+        else:
+            self._proxies = get_settings_value('proxies')
 
         if extra_headers is not None:
             self._extra_headers = extra_headers
@@ -532,7 +538,8 @@ class Connection(object):
                 parameter_validation=False,  # Disable unnecessary validation for performance
                 connect_timeout=self._connect_timeout_seconds,
                 read_timeout=self._read_timeout_seconds,
-                max_pool_connections=self._max_pool_connections)
+                max_pool_connections=self._max_pool_connections,
+                proxies=self._proxies)
             self._client = self.session.create_client(SERVICE_NAME, self.region, endpoint_url=self.host, config=config)
         return self._client
 
